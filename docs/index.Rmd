@@ -8,6 +8,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
 library(tidyverse)
 library(correlation)
 library(maps)
@@ -106,7 +107,6 @@ tornados |>
 # Plot tornado origin and destination on map (failed)
 
 ```{r}
-
 qplot(tornados$mag)
 
 tornados |> 
@@ -129,18 +129,16 @@ tornados |>
     scale_fill_viridis_c() +
     theme_void() +
     labs(title = "Frequency of tornadoes by state")
+```
 
 
+```{r}
 big_tornadoes <- 
     tornados |> 
-    filter(elat != 0) |> 
-    filter(mag == 5) |> 
-    ggplot() +
-    aes(x = slon, y = slat, xend = elon, yend = elat) +
-    geom_segment(arrow = arrow(length = unit(0.3, "cm")), size = 1.1)
+    filter(elat != 0, mag == 5) |> 
+    mutate(size = len * wid)
 
-usa_map <- 
-    tornados |> 
+tornados |> 
     count(st) |> 
     left_join(states, by = "st") |> 
     left_join(map_data("state"), by = "region") |> 
@@ -149,10 +147,17 @@ usa_map <-
            avg_lat = mean(lat)) |> 
     ggplot() +
     aes(x = long, y = lat, group = group) |> 
-    geom_polygon(color = "white") +
-    geom_text(aes(x = avg_long, y = avg_lat, label = st), color = "grey") +
+    geom_polygon(color = "white", fill = "lightgray") +
+    geom_text(aes(x = avg_long, y = avg_lat, label = st), color = "darkgray") +
+    geom_segment(data = big_tornadoes, 
+                 aes(x = slon, y = slat, xend = elon, yend = elat, linewidth = size),
+                 arrow = arrow(angle = 15, length = unit(0.2, "cm"), type = "closed"), 
+                 alpha = .5, color = "blue") +
     coord_quickmap() + 
-    theme_void()
+    theme_void() +
+    scale_linewidth_continuous(labels = scales::comma_format()) +
+    labs(title = "Trajectories of the biggest tornadoes",
+         linewidth = "Size of the tornado (m2)")
 
 
 
@@ -160,13 +165,15 @@ usa_map <-
 
 # Stat modeling of monetary loss
 
+Building two models, one with categorical predictors (state, month), and one without.
+
 ```{r}
-
-
 tornado_lm <- lm(lg_loss ~ yr + mo + st + mag + len + wid, data = tornados)
-
 tornado_ns_lm <- lm(lg_loss ~ yr + mag + len + wid, data = tornados)
+```
 
+
+```{r}
 summary(tornado_lm)
 
 anova(tornado_lm)
@@ -177,9 +184,17 @@ tab_model(tornado_lm,
 
 parameters::parameters(tornado_lm) |> 
     print_html()
+```
 
+
+## Investigating assumotions
+
+```{r}
 performance::check_model(tornado_ns_lm)
+```
 
+## Comparing models
+```{r}
 anova(tornado_lm, tornado_ns_lm)
 
 tab_model(tornado_lm, tornado_ns_lm,
