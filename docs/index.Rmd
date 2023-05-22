@@ -1,0 +1,189 @@
+---
+title: "Tornadoes"
+output: html_document
+date: "`r Sys.Date()`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(correlation)
+library(maps)
+library(sjPlot)
+
+theme_set(theme_light())
+```
+
+# Read data
+
+We read the dataset from the github.
+
+```{r}
+tornados_raw <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-16/tornados.csv')
+
+```
+
+# Process data
+
+```{r}
+tornados <- 
+    tornados_raw |> 
+    mutate(mo = factor(mo, labels = month.name),
+           lg_loss = log(loss + 1))
+
+
+```
+
+Plot tornado frequency by date
+
+```{r}
+tornados |> 
+    count(yr) |> 
+    ggplot() +
+    aes(x = yr, y = n) +
+    geom_col() +
+    geom_smooth(method = "lm")
+    
+tornados |> 
+    mutate(mo = factor(mo, labels = month.name)) |> 
+    ggplot() +
+    aes(x = mo) +
+    geom_bar()
+
+```
+
+# Correlation of monetary loss, insjuries, fatalities, and magnitude
+
+```{r}
+    
+tornados |> 
+    select(mag:loss) |> 
+    correlation()
+
+tornados |> 
+    select(mag:loss) |> 
+    correlation() |> 
+    summary()
+
+tornados |> 
+    select(mag:loss) |> 
+    correlation() |> 
+    plot()
+
+```
+
+
+# Plot tornado frequency by state
+
+```{r}
+tornados |> 
+    count(st, sort = TRUE)
+
+states <- tibble(st = state.abb,
+                 region = str_to_lower(state.name))
+
+tornados |> 
+    count(st) |> 
+    left_join(states, by = "st") |> 
+    left_join(map_data("state"), by = "region") |> 
+    group_by(st) |> 
+    mutate(avg_long = mean(long),
+           avg_lat = mean(lat)) |> 
+    ggplot() +
+    aes(x = long, y = lat, group = group, fill = n) |> 
+    geom_polygon(color = "white") +
+    geom_text(aes(x = avg_long, y = avg_lat, label = st), color = "grey") +
+    coord_quickmap() + 
+    scale_fill_viridis_c() +
+    theme_void() +
+    labs(title = "Frequency of tornadoes by state")
+
+
+```
+
+# Plot tornado origin and destination on map (failed)
+
+```{r}
+
+qplot(tornados$mag)
+
+tornados |> 
+    count(mag)
+
+
+
+tornados |> 
+    count(st) |> 
+    left_join(states, by = "st") |> 
+    left_join(map_data("state"), by = "region") |> 
+    group_by(st) |> 
+    mutate(avg_long = mean(long),
+           avg_lat = mean(lat)) |> 
+    ggplot() +
+    aes(x = long, y = lat, group = group, fill = n) |> 
+    geom_polygon(color = "white") +
+    geom_text(aes(x = avg_long, y = avg_lat, label = st), color = "grey") +
+    coord_quickmap() + 
+    scale_fill_viridis_c() +
+    theme_void() +
+    labs(title = "Frequency of tornadoes by state")
+
+
+big_tornadoes <- 
+    tornados |> 
+    filter(elat != 0) |> 
+    filter(mag == 5) |> 
+    ggplot() +
+    aes(x = slon, y = slat, xend = elon, yend = elat) +
+    geom_segment(arrow = arrow(length = unit(0.3, "cm")), size = 1.1)
+
+usa_map <- 
+    tornados |> 
+    count(st) |> 
+    left_join(states, by = "st") |> 
+    left_join(map_data("state"), by = "region") |> 
+    group_by(st) |> 
+    mutate(avg_long = mean(long),
+           avg_lat = mean(lat)) |> 
+    ggplot() +
+    aes(x = long, y = lat, group = group) |> 
+    geom_polygon(color = "white") +
+    geom_text(aes(x = avg_long, y = avg_lat, label = st), color = "grey") +
+    coord_quickmap() + 
+    theme_void()
+
+
+
+```
+
+# Stat modeling of monetary loss
+
+```{r}
+
+
+tornado_lm <- lm(lg_loss ~ yr + mo + st + mag + len + wid, data = tornados)
+
+tornado_ns_lm <- lm(lg_loss ~ yr + mag + len + wid, data = tornados)
+
+summary(tornado_lm)
+
+anova(tornado_lm)
+
+tab_model(tornado_lm, 
+          show.std = TRUE,
+          show.aic = TRUE, show.fstat = TRUE, show.reflvl = TRUE)
+
+parameters::parameters(tornado_lm) |> 
+    print_html()
+
+performance::check_model(tornado_ns_lm)
+
+anova(tornado_lm, tornado_ns_lm)
+
+tab_model(tornado_lm, tornado_ns_lm,
+          show.aic = TRUE)
+
+```
+
